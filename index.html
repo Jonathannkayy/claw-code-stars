@@ -635,8 +635,8 @@ const REPO = 'instructkr/claw-code';
 const TARGET = 100000;
 const CIRC = 2 * Math.PI * 82;
 
-// Fallback data from latest API snapshot
-const FALLBACK = { stargazers_count: 93871, forks_count: 88199, subscribers_count: 1067, language: 'Rust', open_issues_count: 1640, size: 5860, network_count: 88199, created_at: '2026-03-31T08:58:08Z' };
+// Fallback data — updated on each deploy
+const FALLBACK = { stargazers_count: 94397, forks_count: 88524, subscribers_count: 1075, language: 'Rust', open_issues_count: 1640, size: 5860, network_count: 88524, created_at: '2026-03-31T08:58:08Z' };
 
 const milestones = [
   { t: 10000, l: '10K', n: 'Viral ignition 🔥' },
@@ -833,31 +833,87 @@ function render(data) {
 }
 
 // === FETCH ===
-let usedFallback = false;
+let lastData = null;
 let lastEtag = null;
+let rateLimited = false;
+let rateLimitReset = 0;
 
-async function fetchData() {
-  try {
-    const headers = { 'Accept': 'application/vnd.github.v3+json' };
-    if (lastEtag) headers['If-None-Match'] = lastEtag;
-    const res = await fetch(`https://api.github.com/repos/${REPO}`, { headers });
-    if (res.status === 304) return; // no change
-    if (!res.ok) throw new Error(res.status);
-    lastEtag = res.headers.get('ETag');
-    const data = await res.json();
-    usedFallback = false;
-    render(data);
-  } catch (e) {
-    if (!usedFallback) {
-      usedFallback = true;
-      render(FALLBACK);
-    }
+// Primary: GitHub API direct
+async function fetchGitHub() {
+  const headers = { 'Accept': 'application/vnd.github.v3+json' };
+  if (lastEtag) headers['If-None-Match'] = lastEtag;
+  const res = await fetch(`https://api.github.com/repos/${REPO}`, { headers });
+  // Track rate limit
+  const remaining = parseInt(res.headers.get('X-RateLimit-Remaining') || '99');
+  if (remaining <= 1) {
+    rateLimited = true;
+    rateLimitReset = parseInt(res.headers.get('X-RateLimit-Reset') || '0') * 1000;
+  } else {
+    rateLimited = false;
   }
+  if (res.status === 304) return null; // unchanged
+  if (!res.ok) throw new Error(res.status);
+  lastEtag = res.headers.get('ETag');
+  return await res.json();
 }
 
-// Init — fetch immediately, then every 5s for near-real-time updates
+// Fallback: CORS proxies for when rate-limited
+const PROXIES = [
+  (url) => `https://corsproxy.io/?${encodeURIComponent(url)}`,
+  (url) => `https://api.allorigins.win/raw?url=${encodeURIComponent(url)}`,
+];
+let proxyIdx = 0;
+
+async function fetchViaProxy() {
+  const url = `https://api.github.com/repos/${REPO}`;
+  for (let i = 0; i < PROXIES.length; i++) {
+    const idx = (proxyIdx + i) % PROXIES.length;
+    try {
+      const res = await fetch(PROXIES[idx](url), {
+        headers: { 'Accept': 'application/json' },
+        signal: AbortSignal.timeout(8000)
+      });
+      if (!res.ok) continue;
+      const data = await res.json();
+      if (data.stargazers_count) {
+        proxyIdx = idx; // remember working proxy
+        return data;
+      }
+    } catch (_) { /* try next proxy */ }
+  }
+  return null;
+}
+
+async function fetchData() {
+  let data = null;
+  try {
+    // If rate limited, skip direct API until reset
+    if (rateLimited && Date.now() < rateLimitReset) {
+      data = await fetchViaProxy();
+    } else {
+      data = await fetchGitHub();
+    }
+  } catch (e) {
+    // Direct failed, try proxy
+    try { data = await fetchViaProxy(); } catch (_) {}
+  }
+
+  if (data && data.stargazers_count) {
+    lastData = data;
+    render(data);
+  } else if (!lastData) {
+    // First load, nothing worked — use fallback
+    lastData = FALLBACK;
+    render(FALLBACK);
+  }
+  // If data is null but we have lastData, keep showing it (no-op)
+}
+
+// Adaptive polling: 5s normally, 30s when rate-limited
 fetchData();
-setInterval(fetchData, 5000);
+setInterval(() => {
+  fetchData();
+}, rateLimited ? 30000 : 5000);
 </script>
 </body>
 </html>
