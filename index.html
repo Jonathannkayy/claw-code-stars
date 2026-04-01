@@ -636,7 +636,7 @@ const TARGET = 100000;
 const CIRC = 2 * Math.PI * 82;
 
 // Fallback data — updated on each deploy
-const FALLBACK = { stargazers_count: 94397, forks_count: 88524, subscribers_count: 1075, language: 'Rust', open_issues_count: 1640, size: 5860, network_count: 88524, created_at: '2026-03-31T08:58:08Z' };
+const FALLBACK = { stargazers_count: 94587, forks_count: 88648, subscribers_count: 1078, language: 'Rust', open_issues_count: 1640, size: 5860, network_count: 88648, created_at: '2026-03-31T08:58:08Z' };
 
 const milestones = [
   { t: 10000, l: '10K', n: 'Viral ignition 🔥' },
@@ -832,88 +832,133 @@ function render(data) {
   document.getElementById('heroCard').classList.add('pulse');
 }
 
-// === FETCH ===
-let lastData = null;
-let lastEtag = null;
-let rateLimited = false;
-let rateLimitReset = 0;
+// === FETCH ENGINE (bulletproof) ===
 
-// Primary: GitHub API direct
-async function fetchGitHub() {
+// localStorage cache key
+const CACHE_KEY = 'clawcode_last_data';
+const CACHE_TIME_KEY = 'clawcode_last_time';
+
+// Load cached data from previous visits
+function loadCache() {
+  try {
+    const raw = localStorage.getItem(CACHE_KEY);
+    if (raw) return JSON.parse(raw);
+  } catch (_) {}
+  return null;
+}
+
+function saveCache(data) {
+  try {
+    localStorage.setItem(CACHE_KEY, JSON.stringify({
+      stargazers_count: data.stargazers_count,
+      forks_count: data.forks_count,
+      subscribers_count: data.subscribers_count,
+      language: data.language,
+      open_issues_count: data.open_issues_count,
+      size: data.size,
+      network_count: data.network_count,
+      created_at: data.created_at
+    }));
+    localStorage.setItem(CACHE_TIME_KEY, Date.now().toString());
+  } catch (_) {}
+}
+
+let lastEtag = null;
+let consecutiveFailures = 0;
+
+// Strategy 1: Direct GitHub API
+async function fetchDirect() {
   const headers = { 'Accept': 'application/vnd.github.v3+json' };
   if (lastEtag) headers['If-None-Match'] = lastEtag;
-  const res = await fetch(`https://api.github.com/repos/${REPO}`, { headers });
-  // Track rate limit
-  const remaining = parseInt(res.headers.get('X-RateLimit-Remaining') || '99');
-  if (remaining <= 1) {
-    rateLimited = true;
-    rateLimitReset = parseInt(res.headers.get('X-RateLimit-Reset') || '0') * 1000;
-  } else {
-    rateLimited = false;
-  }
-  if (res.status === 304) return null; // unchanged
-  if (!res.ok) throw new Error(res.status);
+  const res = await fetch(`https://api.github.com/repos/${REPO}`, {
+    headers,
+    signal: AbortSignal.timeout(10000)
+  });
+  if (res.status === 304) return 'unchanged';
+  if (res.status === 403 || res.status === 429) throw new Error('rate-limited');
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
   lastEtag = res.headers.get('ETag');
   return await res.json();
 }
 
-// Fallback: CORS proxies for when rate-limited
-const PROXIES = [
-  (url) => `https://corsproxy.io/?${encodeURIComponent(url)}`,
-  (url) => `https://api.allorigins.win/raw?url=${encodeURIComponent(url)}`,
-];
-let proxyIdx = 0;
-
-async function fetchViaProxy() {
-  const url = `https://api.github.com/repos/${REPO}`;
-  for (let i = 0; i < PROXIES.length; i++) {
-    const idx = (proxyIdx + i) % PROXIES.length;
-    try {
-      const res = await fetch(PROXIES[idx](url), {
-        headers: { 'Accept': 'application/json' },
-        signal: AbortSignal.timeout(8000)
-      });
-      if (!res.ok) continue;
-      const data = await res.json();
-      if (data.stargazers_count) {
-        proxyIdx = idx; // remember working proxy
-        return data;
-      }
-    } catch (_) { /* try next proxy */ }
-  }
-  return null;
+// Strategy 2: allorigins.win proxy (bypasses browser rate limit)
+async function fetchAllOrigins() {
+  const target = encodeURIComponent(`https://api.github.com/repos/${REPO}`);
+  const res = await fetch(`https://api.allorigins.win/get?url=${target}`, {
+    signal: AbortSignal.timeout(10000)
+  });
+  if (!res.ok) throw new Error('allorigins failed');
+  const wrapper = await res.json();
+  if (!wrapper.contents) throw new Error('no contents');
+  const data = JSON.parse(wrapper.contents);
+  if (!data.stargazers_count) throw new Error('invalid data');
+  return data;
 }
 
+// Main fetch with cascading fallback
 async function fetchData() {
   let data = null;
+
+  // Try Strategy 1: Direct API
   try {
-    // If rate limited, skip direct API until reset
-    if (rateLimited && Date.now() < rateLimitReset) {
-      data = await fetchViaProxy();
-    } else {
-      data = await fetchGitHub();
+    const result = await fetchDirect();
+    if (result === 'unchanged') {
+      consecutiveFailures = 0;
+      return; // data hasn't changed, keep showing current
     }
+    data = result;
   } catch (e) {
-    // Direct failed, try proxy
-    try { data = await fetchViaProxy(); } catch (_) {}
+    // Direct failed — try proxy
+    try {
+      data = await fetchAllOrigins();
+    } catch (_) {
+      // Proxy also failed — try direct without etag (fresh request)
+      try {
+        lastEtag = null;
+        const res = await fetch(`https://api.github.com/repos/${REPO}`, {
+          headers: { 'Accept': 'application/vnd.github.v3+json' },
+          cache: 'no-store',
+          signal: AbortSignal.timeout(10000)
+        });
+        if (res.ok) data = await res.json();
+      } catch (__) {}
+    }
   }
 
   if (data && data.stargazers_count) {
-    lastData = data;
+    consecutiveFailures = 0;
+    saveCache(data);
     render(data);
-  } else if (!lastData) {
-    // First load, nothing worked — use fallback
-    lastData = FALLBACK;
-    render(FALLBACK);
+  } else {
+    consecutiveFailures++;
   }
-  // If data is null but we have lastData, keep showing it (no-op)
 }
 
-// Adaptive polling: 5s normally, 30s when rate-limited
-fetchData();
-setInterval(() => {
-  fetchData();
-}, rateLimited ? 30000 : 5000);
+// Adaptive polling: 5s normally, backs off on repeated failures
+function getInterval() {
+  if (consecutiveFailures >= 10) return 60000; // 1min
+  if (consecutiveFailures >= 5) return 30000;  // 30s
+  if (consecutiveFailures >= 3) return 15000;  // 15s
+  return 5000; // 5s
+}
+
+function scheduleNext() {
+  setTimeout(() => {
+    fetchData().finally(scheduleNext);
+  }, getInterval());
+}
+
+// === INIT ===
+// Step 1: Immediately show best available data (no network wait)
+const cached = loadCache();
+if (cached && cached.stargazers_count) {
+  render(cached); // show last real data from previous visit
+} else {
+  render(FALLBACK); // absolute last resort — hardcoded snapshot
+}
+
+// Step 2: Fetch fresh data right now (overwrites above), then poll
+fetchData().then(scheduleNext);
 </script>
 </body>
 </html>
