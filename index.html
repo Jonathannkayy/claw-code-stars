@@ -508,7 +508,7 @@
   <div class="header stagger" style="animation-delay:0.1s">
     <div class="live-badge">
       <span class="live-dot"></span>
-      LIVE · REFRESHES EVERY 30S
+      LIVE
     </div>
     <img class="repo-avatar" src="https://avatars.githubusercontent.com/u/164172344?v=4" alt="instructkr" />
     <h1>
@@ -848,13 +848,18 @@ function render(data) {
 
 // === FETCH ===
 let usedFallback = false;
+let lastEtag = null;
+
 async function fetchData() {
   try {
-    const res = await fetch(`https://api.github.com/repos/${REPO}`, {
-      headers: { 'Accept': 'application/vnd.github.v3+json' }
-    });
+    const headers = { 'Accept': 'application/vnd.github.v3+json' };
+    if (lastEtag) headers['If-None-Match'] = lastEtag;
+    const res = await fetch(`https://api.github.com/repos/${REPO}`, { headers });
+    if (res.status === 304) return; // no change
     if (!res.ok) throw new Error(res.status);
+    lastEtag = res.headers.get('ETag');
     const data = await res.json();
+    usedFallback = false;
     render(data);
   } catch (e) {
     if (!usedFallback) {
@@ -864,9 +869,9 @@ async function fetchData() {
   }
 }
 
-// Init
+// Init — fetch immediately, then every 5s for near-real-time updates
 fetchData();
-setInterval(fetchData, 30000);
+setInterval(fetchData, 5000);
 </script>
 </body>
 </html>
