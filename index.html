@@ -1,0 +1,872 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>claw-code ⭐ Star Tracker — Road to 100K</title>
+<meta name="description" content="Live star counter for instructkr/claw-code — the fastest repo to 50K stars. Watch the road to 100K in real time.">
+<meta property="og:title" content="claw-code ⭐ Star Tracker">
+<meta property="og:description" content="Live star counter tracking the road to 100K — the fastest repo in history to 50K stars.">
+<meta property="og:image" content="https://raw.githubusercontent.com/instructkr/claw-code/main/assets/clawd-hero.jpeg">
+<meta property="og:type" content="website">
+<meta name="twitter:card" content="summary_large_image">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>⭐</text></svg>">
+<link href="https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=Outfit:wght@300;400;600;800;900&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --gold: #f0c030;
+    --amber: #ff8c1a;
+    --coral: #ff4060;
+    --lime: #72ff50;
+    --rust: #dea584;
+    --rust-dark: #b7410e;
+    --bg-deep: #06060c;
+    --bg-card: rgba(255,255,255,0.025);
+    --border-subtle: rgba(255,255,255,0.055);
+    --text-dim: rgba(255,255,255,0.3);
+    --text-muted: rgba(255,255,255,0.5);
+  }
+
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    background: var(--bg-deep);
+    color: #fff;
+    font-family: 'Outfit', sans-serif;
+    min-height: 100vh;
+    overflow-x: hidden;
+    position: relative;
+  }
+
+  /* === AMBIENT BACKGROUND === */
+  .bg-orb {
+    position: fixed;
+    border-radius: 50%;
+    pointer-events: none;
+    filter: blur(80px);
+    z-index: 0;
+  }
+  .bg-orb--a { width: 50vw; height: 50vw; top: -15%; left: -10%; background: rgba(240,192,48,0.06); }
+  .bg-orb--b { width: 60vw; height: 60vw; bottom: -25%; right: -15%; background: rgba(255,64,96,0.04); }
+  .bg-orb--c { width: 35vw; height: 35vw; top: 40%; left: 55%; background: rgba(222,165,132,0.03); }
+
+  .noise-overlay {
+    position: fixed; inset: 0; z-index: 1; pointer-events: none; opacity: 0.03;
+    background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+    background-size: 128px 128px;
+  }
+
+  /* === STAR CANVAS === */
+  #starfield { position: fixed; inset: 0; z-index: 1; pointer-events: none; }
+
+  /* === CONFETTI === */
+  #confetti { position: fixed; inset: 0; z-index: 200; pointer-events: none; display: none; }
+
+  /* === MAIN CONTAINER === */
+  .container {
+    position: relative; z-index: 10;
+    max-width: 860px; margin: 0 auto;
+    padding: clamp(1.5rem, 5vw, 4rem) clamp(1rem, 4vw, 2rem);
+  }
+
+  /* === LIVE BADGE === */
+  .live-badge {
+    display: inline-flex; align-items: center; gap: 8px;
+    background: rgba(114,255,80,0.06);
+    border: 1px solid rgba(114,255,80,0.12);
+    border-radius: 99px; padding: 6px 16px;
+    font-family: 'Space Mono', monospace;
+    font-size: 11px; letter-spacing: 0.12em;
+    color: var(--lime);
+    margin-bottom: 1.5rem;
+  }
+  .live-dot {
+    width: 7px; height: 7px; border-radius: 50%;
+    background: var(--lime); box-shadow: 0 0 8px var(--lime);
+    animation: blink 2s infinite;
+  }
+
+  /* === HEADER === */
+  .header { text-align: center; margin-bottom: clamp(2rem, 5vw, 3.5rem); }
+
+  .repo-avatar {
+    width: 64px; height: 64px; border-radius: 16px;
+    border: 2px solid rgba(255,255,255,0.08);
+    margin-bottom: 1rem;
+    box-shadow: 0 0 30px rgba(240,192,48,0.1);
+  }
+
+  .header h1 {
+    font-size: clamp(1.6rem, 5vw, 3.2rem);
+    font-weight: 900; letter-spacing: -0.04em; line-height: 1.1;
+  }
+  .header h1 .dim { color: var(--text-dim); font-weight: 400; }
+  .header h1 .accent {
+    background: linear-gradient(135deg, var(--gold), var(--amber));
+    -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+    background-clip: text;
+  }
+  .header p {
+    color: var(--text-dim); font-size: clamp(0.75rem, 2vw, 0.95rem);
+    margin-top: 0.5rem; font-weight: 300; max-width: 520px; margin-inline: auto;
+  }
+
+  .lang-badges {
+    display: flex; justify-content: center; gap: 8px; margin-top: 1rem; flex-wrap: wrap;
+  }
+  .lang-badge {
+    display: inline-flex; align-items: center; gap: 5px;
+    font-family: 'Space Mono', monospace;
+    font-size: 10px; letter-spacing: 0.08em;
+    background: rgba(255,255,255,0.03);
+    border: 1px solid rgba(255,255,255,0.06);
+    border-radius: 99px; padding: 4px 12px;
+    color: var(--text-muted);
+  }
+  .lang-dot { width: 8px; height: 8px; border-radius: 50%; }
+  .lang-dot--rust { background: var(--rust); }
+  .lang-dot--python { background: #3572A5; }
+
+  /* === HERO COUNTER CARD === */
+  .hero-card {
+    background: var(--bg-card);
+    border: 1px solid var(--border-subtle);
+    border-radius: 28px;
+    padding: clamp(2rem, 5vw, 3.5rem) clamp(1rem, 3vw, 2rem);
+    text-align: center;
+    position: relative; overflow: hidden;
+    margin-bottom: clamp(1.2rem, 3vw, 1.8rem);
+    backdrop-filter: blur(20px);
+  }
+  .hero-card::before {
+    content: ''; position: absolute; top: 0; left: 50%; transform: translateX(-50%);
+    width: 50%; height: 1px;
+    background: linear-gradient(90deg, transparent, rgba(240,192,48,0.35), transparent);
+  }
+  .hero-card::after {
+    content: ''; position: absolute; bottom: 0; left: 50%; transform: translateX(-50%);
+    width: 30%; height: 1px;
+    background: linear-gradient(90deg, transparent, rgba(222,165,132,0.2), transparent);
+  }
+  .hero-card__label {
+    font-family: 'Space Mono', monospace;
+    font-size: clamp(0.6rem, 1.5vw, 0.78rem);
+    color: var(--text-dim); letter-spacing: 0.18em;
+    text-transform: uppercase; margin-bottom: 1rem;
+  }
+
+  .counter-wrap { display: flex; justify-content: center; align-items: baseline; flex-wrap: wrap; gap: 0; }
+  .digit {
+    display: inline-block;
+    font-family: 'Space Mono', monospace;
+    font-size: clamp(3rem, 10vw, 8rem);
+    font-weight: 700;
+    background: linear-gradient(180deg, var(--gold) 0%, var(--amber) 45%, var(--coral) 100%);
+    -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text;
+    filter: drop-shadow(0 0 30px rgba(240,192,48,0.25));
+    min-width: 0.6em; text-align: center;
+    opacity: 0; transform: translateY(30px) scale(0.7);
+    animation: digitIn 0.5s cubic-bezier(0.34, 1.56, 0.64, 1) forwards;
+  }
+  .digit.comma { min-width: 0.3em; }
+
+  .remaining {
+    margin-top: 1rem;
+    font-family: 'Space Mono', monospace;
+    font-size: clamp(0.65rem, 1.5vw, 0.82rem);
+    color: var(--text-dim);
+  }
+  .remaining .hl { color: var(--gold); }
+
+  /* === VELOCITY BADGE === */
+  .velocity-badge {
+    display: inline-flex; align-items: center; gap: 6px;
+    margin-top: 0.8rem;
+    font-family: 'Space Mono', monospace;
+    font-size: clamp(0.55rem, 1.2vw, 0.7rem);
+    color: var(--lime);
+    background: rgba(114,255,80,0.05);
+    border: 1px solid rgba(114,255,80,0.1);
+    border-radius: 99px; padding: 4px 14px;
+  }
+
+  /* === GRID === */
+  .grid { display: grid; gap: clamp(0.8rem, 2vw, 1.2rem); margin-bottom: clamp(1.2rem, 3vw, 1.8rem); }
+  .grid--2 { grid-template-columns: 1fr 1fr; }
+  @media (max-width: 560px) { .grid--2 { grid-template-columns: 1fr; } }
+
+  /* === CARD === */
+  .card {
+    background: var(--bg-card);
+    border: 1px solid var(--border-subtle);
+    border-radius: 20px;
+    padding: clamp(1.2rem, 3vw, 1.8rem);
+    position: relative; overflow: hidden;
+  }
+  .card__label {
+    font-family: 'Space Mono', monospace;
+    font-size: clamp(0.55rem, 1.2vw, 0.68rem);
+    color: var(--text-dim); letter-spacing: 0.14em;
+    text-transform: uppercase; margin-bottom: 0.6rem;
+  }
+
+  /* === PROGRESS RING === */
+  .ring-wrap {
+    display: flex; align-items: center; justify-content: center;
+    padding: 1rem 0;
+    position: relative;
+  }
+  .ring-text {
+    position: absolute; text-align: center;
+  }
+  .ring-text__pct {
+    font-family: 'Space Mono', monospace;
+    font-size: clamp(1.8rem, 5vw, 2.8rem);
+    font-weight: 700;
+    background: linear-gradient(180deg, var(--gold), var(--amber));
+    -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text;
+  }
+  .ring-text__sub {
+    font-family: 'Space Mono', monospace;
+    font-size: clamp(0.5rem, 1vw, 0.65rem);
+    color: var(--text-dim); letter-spacing: 0.12em;
+  }
+
+  /* === STAT ROW === */
+  .stat-stack { display: flex; flex-direction: column; gap: clamp(0.6rem, 1.5vw, 1rem); }
+  .stat {
+    display: flex; align-items: center; gap: 1rem;
+    background: var(--bg-card);
+    border: 1px solid var(--border-subtle);
+    border-radius: 16px;
+    padding: clamp(0.8rem, 2vw, 1.1rem) clamp(1rem, 2.5vw, 1.4rem);
+  }
+  .stat__icon { font-size: clamp(1.2rem, 3vw, 1.5rem); flex-shrink: 0; }
+  .stat__label {
+    font-family: 'Space Mono', monospace;
+    font-size: clamp(0.5rem, 1vw, 0.6rem);
+    color: var(--text-dim); letter-spacing: 0.1em; margin-bottom: 2px;
+  }
+  .stat__val {
+    font-size: clamp(1rem, 2.5vw, 1.35rem); font-weight: 700;
+    color: rgba(255,255,255,0.88);
+  }
+
+  /* === PROGRESS BAR === */
+  .bar-track {
+    height: 10px; border-radius: 99px;
+    background: rgba(255,255,255,0.04);
+    overflow: hidden; position: relative; margin-top: 0.6rem;
+  }
+  .bar-fill {
+    height: 100%; border-radius: 99px;
+    background: linear-gradient(90deg, var(--gold), var(--amber), var(--coral));
+    box-shadow: 0 0 18px rgba(240,192,48,0.3);
+    position: relative;
+    transition: width 1.5s cubic-bezier(0.4, 0, 0.2, 1);
+  }
+  .bar-fill::after {
+    content: ''; position: absolute; inset: 0;
+    background: linear-gradient(90deg, transparent, rgba(255,255,255,0.2), transparent);
+    animation: shine 2.5s infinite;
+  }
+  .bar-ends { display: flex; justify-content: space-between; margin-top: 0.4rem; }
+  .bar-ends span {
+    font-family: 'Space Mono', monospace;
+    font-size: clamp(0.55rem, 1.2vw, 0.7rem);
+    color: var(--text-dim);
+  }
+  .bar-ends .hl { color: var(--gold); font-weight: 700; }
+
+  /* === MILESTONES === */
+  .milestone { display: flex; gap: clamp(0.8rem, 2vw, 1.2rem); align-items: flex-start; }
+  .milestone__track { display: flex; flex-direction: column; align-items: center; min-width: 18px; }
+  .milestone__dot {
+    width: 14px; height: 14px; border-radius: 50%; flex-shrink: 0;
+    border: 2px solid rgba(255,255,255,0.08);
+    background: rgba(255,255,255,0.04);
+    transition: all 0.5s ease;
+  }
+  .milestone__dot.reached {
+    background: linear-gradient(135deg, var(--gold), var(--amber));
+    border-color: rgba(240,192,48,0.4);
+    box-shadow: 0 0 14px rgba(240,192,48,0.25);
+  }
+  .milestone__dot.next {
+    border-color: rgba(240,192,48,0.25);
+    animation: nextPulse 2s infinite;
+  }
+  .milestone__line {
+    width: 2px; height: 28px;
+    background: rgba(255,255,255,0.04);
+  }
+  .milestone__line.reached { background: rgba(240,192,48,0.15); }
+  .milestone__body { padding-bottom: 0.8rem; margin-top: -1px; }
+  .milestone__title {
+    font-size: clamp(0.85rem, 2vw, 1.05rem); font-weight: 700;
+    color: rgba(255,255,255,0.2);
+    transition: color 0.4s;
+  }
+  .milestone__title.reached { color: var(--gold); }
+  .milestone__title.next { color: rgba(240,192,48,0.6); }
+  .milestone__note {
+    font-size: clamp(0.6rem, 1.3vw, 0.73rem);
+    color: rgba(255,255,255,0.12);
+    transition: color 0.4s;
+  }
+  .milestone__note.reached { color: var(--text-dim); }
+  .milestone__note.next { color: rgba(255,255,255,0.2); }
+
+  /* === OPEN ISSUES / EXTRA STATS === */
+  .extra-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: clamp(0.8rem, 2vw, 1.2rem);
+    margin-bottom: clamp(1.2rem, 3vw, 1.8rem);
+  }
+  @media (max-width: 560px) { .extra-grid { grid-template-columns: 1fr; } }
+  .mini-card {
+    background: var(--bg-card);
+    border: 1px solid var(--border-subtle);
+    border-radius: 16px;
+    padding: clamp(1rem, 2vw, 1.4rem);
+    text-align: center;
+  }
+  .mini-card__icon { font-size: 1.5rem; margin-bottom: 0.4rem; }
+  .mini-card__val {
+    font-family: 'Space Mono', monospace;
+    font-size: clamp(1.2rem, 3vw, 1.6rem);
+    font-weight: 700; color: rgba(255,255,255,0.85);
+  }
+  .mini-card__label {
+    font-family: 'Space Mono', monospace;
+    font-size: clamp(0.5rem, 1vw, 0.6rem);
+    color: var(--text-dim); letter-spacing: 0.1em;
+    margin-top: 0.2rem;
+  }
+
+  /* === FOOTER === */
+  .footer {
+    text-align: center; padding: 2rem 0;
+    color: rgba(255,255,255,0.12);
+    font-size: clamp(0.55rem, 1.2vw, 0.7rem);
+  }
+  .footer a { color: rgba(240,192,48,0.35); text-decoration: none; }
+  .footer a:hover { color: var(--gold); }
+
+  /* === TOAST OVERLAY === */
+  .toast-overlay {
+    position: fixed; inset: 0; z-index: 300;
+    display: none; align-items: center; justify-content: center;
+    background: rgba(0,0,0,0.7);
+    backdrop-filter: blur(16px);
+    animation: fadeIn 0.4s ease;
+  }
+  .toast-overlay.active { display: flex; }
+
+  .toast-card {
+    background: linear-gradient(140deg, #12122a 0%, #0f1f40 50%, #0a1630 100%);
+    border: 2px solid rgba(240,192,48,0.4);
+    border-radius: 28px;
+    padding: clamp(2.5rem, 6vw, 4rem);
+    text-align: center;
+    max-width: min(92vw, 560px);
+    box-shadow:
+      0 0 80px rgba(240,192,48,0.2),
+      0 0 200px rgba(255,64,96,0.08),
+      inset 0 1px 0 rgba(255,255,255,0.08);
+    animation: toastPop 0.7s cubic-bezier(0.34, 1.56, 0.64, 1);
+    position: relative;
+  }
+  .toast-trophy { font-size: clamp(3.5rem, 10vw, 6rem); margin-bottom: 0.3rem; animation: trophyBounce 1s ease infinite; }
+  .toast-headline {
+    font-family: 'Space Mono', monospace;
+    font-size: clamp(1.5rem, 5vw, 2.5rem);
+    font-weight: 700;
+    background: linear-gradient(90deg, var(--gold), var(--amber), var(--coral), var(--gold));
+    background-size: 300% auto;
+    -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text;
+    animation: shimmer 2s linear infinite;
+    margin-bottom: 0.5rem;
+  }
+  .toast-sub {
+    font-size: clamp(0.85rem, 2.5vw, 1.15rem);
+    color: rgba(255,255,255,0.55);
+    line-height: 1.6; margin-bottom: 1.5rem;
+  }
+  .toast-sub .hl { color: var(--gold); font-weight: 600; }
+  .toast-badge {
+    display: inline-flex; gap: 6px; align-items: center;
+    font-family: 'Space Mono', monospace;
+    font-size: clamp(0.6rem, 1.5vw, 0.78rem);
+    background: rgba(240,192,48,0.08);
+    border: 1px solid rgba(240,192,48,0.18);
+    border-radius: 99px; padding: 8px 20px;
+    color: var(--gold);
+  }
+  .toast-close {
+    position: absolute; top: 1rem; right: 1rem;
+    background: rgba(255,255,255,0.08); border: none;
+    color: #fff; border-radius: 50%;
+    width: 36px; height: 36px; cursor: pointer;
+    font-size: 1rem; display: flex; align-items: center; justify-content: center;
+    transition: background 0.2s;
+  }
+  .toast-close:hover { background: rgba(255,255,255,0.15); }
+
+  /* === CTA BUTTON === */
+  .cta-wrap { text-align: center; margin-bottom: clamp(1.2rem, 3vw, 1.8rem); }
+  .cta-btn {
+    display: inline-flex; align-items: center; gap: 10px;
+    font-family: 'Space Mono', monospace;
+    font-size: clamp(0.7rem, 1.5vw, 0.85rem);
+    letter-spacing: 0.05em;
+    padding: 14px 32px;
+    border-radius: 99px; border: none;
+    background: linear-gradient(135deg, var(--gold), var(--amber));
+    color: #000; font-weight: 700;
+    text-decoration: none;
+    cursor: pointer;
+    transition: transform 0.2s, box-shadow 0.2s;
+    box-shadow: 0 0 30px rgba(240,192,48,0.2);
+  }
+  .cta-btn:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 0 50px rgba(240,192,48,0.35);
+  }
+
+  /* === ANIMATIONS === */
+  @keyframes blink { 0%,100% { opacity: 1; } 50% { opacity: 0.25; } }
+  @keyframes digitIn {
+    to { opacity: 1; transform: translateY(0) scale(1); }
+  }
+  @keyframes shine {
+    from { transform: translateX(-200%); }
+    to { transform: translateX(300%); }
+  }
+  @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+  @keyframes toastPop {
+    from { opacity: 0; transform: scale(0.6) translateY(50px); }
+    to { opacity: 1; transform: scale(1) translateY(0); }
+  }
+  @keyframes shimmer { to { background-position: 300% center; } }
+  @keyframes trophyBounce {
+    0%, 100% { transform: translateY(0) rotate(0deg); }
+    25% { transform: translateY(-8px) rotate(-3deg); }
+    75% { transform: translateY(-4px) rotate(3deg); }
+  }
+  @keyframes pulseOnce {
+    0% { transform: scale(1); }
+    50% { transform: scale(1.015); }
+    100% { transform: scale(1); }
+  }
+  @keyframes nextPulse {
+    0%, 100% { box-shadow: 0 0 0 0 rgba(240,192,48,0.3); }
+    50% { box-shadow: 0 0 12px 4px rgba(240,192,48,0.15); }
+  }
+  .pulse { animation: pulseOnce 0.4s ease; }
+
+  /* Entry stagger */
+  .stagger { opacity: 0; transform: translateY(20px); animation: staggerIn 0.6s ease forwards; }
+  @keyframes staggerIn { to { opacity: 1; transform: translateY(0); } }
+
+  /* Counting animation for velocity */
+  @keyframes countUp {
+    from { opacity: 0; transform: translateY(5px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+</style>
+</head>
+<body>
+
+<div class="bg-orb bg-orb--a"></div>
+<div class="bg-orb bg-orb--b"></div>
+<div class="bg-orb bg-orb--c"></div>
+<div class="noise-overlay"></div>
+
+<canvas id="starfield"></canvas>
+<canvas id="confetti"></canvas>
+
+<!-- TOAST -->
+<div class="toast-overlay" id="toast">
+  <div class="toast-card">
+    <button class="toast-close" onclick="document.getElementById('toast').classList.remove('active')">&times;</button>
+    <div class="toast-trophy">🏆</div>
+    <div class="toast-headline">100,000 STARS</div>
+    <div class="toast-sub">
+      <strong>claw-code</strong> just made history.<br>
+      The fastest repo to 50K now hits <span class="hl">100K</span>.<br>
+      Written in Rust. Built with obsession.
+    </div>
+    <div class="toast-badge">⭐ LEGENDARY MILESTONE ACHIEVED ⭐</div>
+  </div>
+</div>
+
+<div class="container">
+
+  <!-- HEADER -->
+  <div class="header stagger" style="animation-delay:0.1s">
+    <div class="live-badge">
+      <span class="live-dot"></span>
+      LIVE · REFRESHES EVERY 30S
+    </div>
+    <img class="repo-avatar" src="https://avatars.githubusercontent.com/u/164172344?v=4" alt="instructkr" />
+    <h1>
+      <span class="dim">instructkr / </span><span class="accent">claw-code</span>
+    </h1>
+    <p>The fastest repo in history to 50K stars — tracking the road to 100K. Written in Rust with oh-my-codex.</p>
+    <div class="lang-badges">
+      <span class="lang-badge"><span class="lang-dot lang-dot--rust"></span>Rust 89.6%</span>
+      <span class="lang-badge"><span class="lang-dot lang-dot--python"></span>Python 10.4%</span>
+    </div>
+  </div>
+
+  <!-- HERO COUNTER -->
+  <div class="hero-card stagger" style="animation-delay:0.2s" id="heroCard">
+    <div class="hero-card__label">GitHub Stars</div>
+    <div class="counter-wrap" id="counter"><!-- digits injected --></div>
+    <div class="remaining" id="remaining"></div>
+    <div class="velocity-badge" id="velocity" style="display:none">
+      <span>📈</span>
+      <span id="velocityText"></span>
+    </div>
+  </div>
+
+  <!-- CTA -->
+  <div class="cta-wrap stagger" style="animation-delay:0.28s">
+    <a class="cta-btn" href="https://github.com/instructkr/claw-code" target="_blank" rel="noopener">
+      ⭐ Star on GitHub
+    </a>
+  </div>
+
+  <!-- PROGRESS BAR -->
+  <div class="card stagger" style="animation-delay:0.35s">
+    <div class="card__label">Progress to 100K</div>
+    <div class="bar-track"><div class="bar-fill" id="barFill" style="width:0%"></div></div>
+    <div class="bar-ends">
+      <span>0</span>
+      <span><span class="hl" id="barLabel">—</span> / 100,000</span>
+    </div>
+  </div>
+
+  <!-- GRID: RING + STATS -->
+  <div class="grid grid--2 stagger" style="animation-delay:0.45s">
+    <!-- Ring -->
+    <div class="card">
+      <div class="ring-wrap">
+        <svg id="ringSvg" width="190" height="190" style="transform:rotate(-90deg)">
+          <defs>
+            <linearGradient id="rGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+              <stop offset="0%" stop-color="var(--gold)"/>
+              <stop offset="50%" stop-color="var(--amber)"/>
+              <stop offset="100%" stop-color="var(--coral)"/>
+            </linearGradient>
+            <filter id="glow"><feGaussianBlur stdDeviation="3.5" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter>
+          </defs>
+          <circle cx="95" cy="95" r="82" fill="none" stroke="rgba(255,255,255,0.04)" stroke-width="8"/>
+          <circle id="ringArc" cx="95" cy="95" r="82" fill="none" stroke="url(#rGrad)" stroke-width="8"
+            stroke-dasharray="515.22" stroke-dashoffset="515.22" stroke-linecap="round" filter="url(#glow)"
+            style="transition:stroke-dashoffset 1.5s cubic-bezier(0.4,0,0.2,1)"/>
+        </svg>
+        <div class="ring-text">
+          <div class="ring-text__pct" id="ringPct">0%</div>
+          <div class="ring-text__sub">TO 100K</div>
+        </div>
+      </div>
+    </div>
+    <!-- Stats -->
+    <div class="stat-stack">
+      <div class="stat">
+        <span class="stat__icon">🍴</span>
+        <div>
+          <div class="stat__label">FORKS</div>
+          <div class="stat__val" id="forkCount">—</div>
+        </div>
+      </div>
+      <div class="stat">
+        <span class="stat__icon">👁</span>
+        <div>
+          <div class="stat__label">WATCHERS</div>
+          <div class="stat__val" id="watchCount">—</div>
+        </div>
+      </div>
+      <div class="stat">
+        <span class="stat__icon">🦀</span>
+        <div>
+          <div class="stat__label">LANGUAGE</div>
+          <div class="stat__val" id="langVal">—</div>
+        </div>
+      </div>
+      <div class="stat">
+        <span class="stat__icon">📅</span>
+        <div>
+          <div class="stat__label">CREATED</div>
+          <div class="stat__val" id="createdVal">—</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- EXTRA STATS ROW -->
+  <div class="extra-grid stagger" style="animation-delay:0.5s">
+    <div class="mini-card">
+      <div class="mini-card__icon">🐛</div>
+      <div class="mini-card__val" id="issueCount">—</div>
+      <div class="mini-card__label">OPEN ISSUES</div>
+    </div>
+    <div class="mini-card">
+      <div class="mini-card__icon">📦</div>
+      <div class="mini-card__val" id="sizeVal">—</div>
+      <div class="mini-card__label">REPO SIZE</div>
+    </div>
+    <div class="mini-card">
+      <div class="mini-card__icon">🌐</div>
+      <div class="mini-card__val" id="networkVal">—</div>
+      <div class="mini-card__label">NETWORK</div>
+    </div>
+  </div>
+
+  <!-- MILESTONES -->
+  <div class="card stagger" style="animation-delay:0.55s">
+    <div class="card__label" style="margin-bottom:1.2rem">Milestone Timeline</div>
+    <div id="milestones"></div>
+  </div>
+
+  <!-- FOOTER -->
+  <div class="footer stagger" style="animation-delay:0.65s">
+    <div id="lastUpdated" style="margin-bottom:4px"></div>
+    <div>Powered by GitHub API · <a href="https://github.com/instructkr/claw-code" target="_blank" rel="noopener">View Repository →</a></div>
+    <div style="margin-top:6px">
+      <a href="https://github.com/sponsors/instructkr" target="_blank" rel="noopener">❤️ Sponsor @instructkr</a>
+    </div>
+    <div style="margin-top:10px; opacity:0.7">🐾 claw-code star tracker</div>
+  </div>
+
+</div>
+
+<script>
+const REPO = 'instructkr/claw-code';
+const TARGET = 100000;
+const CIRC = 2 * Math.PI * 82;
+
+// Fallback data from latest API snapshot
+const FALLBACK = { stargazers_count: 93871, forks_count: 88199, subscribers_count: 1067, language: 'Rust', open_issues_count: 1640, size: 5860, network_count: 88199, created_at: '2026-03-31T08:58:08Z' };
+
+const milestones = [
+  { t: 10000, l: '10K', n: 'Viral ignition 🔥' },
+  { t: 25000, l: '25K', n: 'Community surge 🌊' },
+  { t: 50000, l: '50K', n: '2 hours — history made ⚡' },
+  { t: 75000, l: '75K', n: 'Unstoppable momentum 🚀' },
+  { t: 100000, l: '100K', n: 'Legendary status 🏆' },
+];
+
+// Track previous star count for velocity
+let prevStars = null;
+let prevTime = null;
+
+// === STARFIELD ===
+(function initStarfield() {
+  const c = document.getElementById('starfield');
+  const ctx = c.getContext('2d');
+  let stars = [];
+  function resize() { c.width = innerWidth; c.height = innerHeight; }
+  resize(); addEventListener('resize', resize);
+  for (let i = 0; i < 80; i++) {
+    stars.push({
+      x: Math.random() * c.width, y: Math.random() * c.height,
+      s: Math.random() * 1.8 + 0.4, sp: Math.random() * 0.4 + 0.08,
+      o: Math.random() * 0.5 + 0.08, p: Math.random() * Math.PI * 2
+    });
+  }
+  (function draw() {
+    ctx.clearRect(0, 0, c.width, c.height);
+    stars.forEach(s => {
+      s.y -= s.sp; s.p += 0.015;
+      if (s.y < -4) { s.y = c.height + 4; s.x = Math.random() * c.width; }
+      ctx.globalAlpha = s.o * (0.4 + 0.6 * Math.sin(s.p));
+      ctx.fillStyle = '#f0c030';
+      ctx.beginPath(); ctx.arc(s.x, s.y, s.s, 0, Math.PI * 2); ctx.fill();
+    });
+    requestAnimationFrame(draw);
+  })();
+})();
+
+// === CONFETTI ENGINE ===
+let confettiRunning = false;
+function startConfetti() {
+  if (confettiRunning) return; confettiRunning = true;
+  const c = document.getElementById('confetti');
+  c.style.display = 'block';
+  const ctx = c.getContext('2d');
+  c.width = innerWidth; c.height = innerHeight;
+  const colors = ['#FFD700','#FF6B35','#00E5FF','#76FF03','#FF4081','#7C4DFF','#FFAB00','#18FFFF','#F50057','#00E676','#dea584'];
+  let parts = [];
+  for (let i = 0; i < 300; i++) {
+    parts.push({
+      x: Math.random() * c.width, y: Math.random() * -c.height,
+      w: Math.random() * 10 + 4, h: Math.random() * 6 + 3,
+      sp: Math.random() * 4 + 2, d: (Math.random() - 0.5) * 2.5,
+      r: Math.random() * 360, rs: (Math.random() - 0.5) * 12,
+      col: colors[Math.floor(Math.random() * colors.length)],
+      op: 1, shape: Math.floor(Math.random() * 3)
+    });
+  }
+  let frame = 0;
+  (function draw() {
+    ctx.clearRect(0, 0, c.width, c.height);
+    frame++;
+    parts.forEach(p => {
+      p.y += p.sp; p.x += p.d; p.r += p.rs;
+      if (frame > 300) p.op -= 0.003;
+      if (p.y > c.height || p.op <= 0) {
+        if (frame < 300) {
+          p.y = -10; p.x = Math.random() * c.width; p.op = 1;
+        }
+      }
+      if (p.op <= 0) return;
+      ctx.save(); ctx.translate(p.x, p.y); ctx.rotate(p.r * Math.PI / 180);
+      ctx.globalAlpha = p.op; ctx.fillStyle = p.col;
+      if (p.shape === 0) ctx.fillRect(-p.w/2, -p.h/2, p.w, p.h);
+      else if (p.shape === 1) { ctx.beginPath(); ctx.arc(0,0,p.w/2,0,Math.PI*2); ctx.fill(); }
+      else {
+        ctx.beginPath();
+        for (let i=0;i<5;i++) {
+          const a1 = (i*72-90)*Math.PI/180, a2 = ((i*72+36)-90)*Math.PI/180;
+          ctx.lineTo(Math.cos(a1)*p.w/2, Math.sin(a1)*p.w/2);
+          ctx.lineTo(Math.cos(a2)*p.w/4, Math.sin(a2)*p.w/4);
+        }
+        ctx.closePath(); ctx.fill();
+      }
+      ctx.restore();
+    });
+    if (confettiRunning && frame < 600) requestAnimationFrame(draw);
+    else { c.style.display = 'none'; confettiRunning = false; }
+  })();
+}
+
+// === RENDER ===
+function render(data) {
+  const stars = data.stargazers_count;
+  const forks = data.forks_count;
+  const watchers = data.subscribers_count;
+  const lang = data.language;
+  const pct = Math.min((stars / TARGET) * 100, 100);
+  const rem = Math.max(TARGET - stars, 0);
+  const formatted = stars.toLocaleString();
+  const digits = formatted.split('');
+
+  // Velocity tracking
+  const now = Date.now();
+  if (prevStars !== null && prevStars !== stars) {
+    const delta = stars - prevStars;
+    const dtMin = (now - prevTime) / 60000;
+    if (dtMin > 0 && delta !== 0) {
+      const perHour = Math.round((delta / dtMin) * 60);
+      const velEl = document.getElementById('velocity');
+      const velText = document.getElementById('velocityText');
+      velEl.style.display = 'inline-flex';
+      const sign = perHour > 0 ? '+' : '';
+      velText.textContent = `${sign}${perHour.toLocaleString()} stars/hr`;
+    }
+  }
+  prevStars = stars;
+  prevTime = now;
+
+  // Counter digits
+  const el = document.getElementById('counter');
+  el.innerHTML = digits.map((d, i) =>
+    `<span class="digit${d === ',' ? ' comma' : ''}" style="animation-delay:${i * 50}ms">${d}</span>`
+  ).join('');
+
+  // Remaining
+  document.getElementById('remaining').innerHTML = rem > 0
+    ? `⭐ <span class="hl">${rem.toLocaleString()}</span> to 100K`
+    : '⭐ <span class="hl">TARGET REACHED!</span>';
+
+  // Bar
+  requestAnimationFrame(() => {
+    document.getElementById('barFill').style.width = pct + '%';
+  });
+  document.getElementById('barLabel').textContent = formatted;
+
+  // Ring
+  const offset = CIRC - (pct / 100) * CIRC;
+  document.getElementById('ringArc').style.strokeDashoffset = offset;
+  document.getElementById('ringPct').textContent = pct.toFixed(1) + '%';
+
+  // Stats
+  document.getElementById('forkCount').textContent = (forks || 0).toLocaleString();
+  document.getElementById('watchCount').textContent = (watchers || 0).toLocaleString();
+  document.getElementById('langVal').textContent = lang || '—';
+
+  // Created date
+  if (data.created_at) {
+    const d = new Date(data.created_at);
+    document.getElementById('createdVal').textContent = d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+  }
+
+  // Extra stats
+  document.getElementById('issueCount').textContent = (data.open_issues_count || 0).toLocaleString();
+  const sizeMB = ((data.size || 0) / 1024).toFixed(1);
+  document.getElementById('sizeVal').textContent = sizeMB + ' MB';
+  document.getElementById('networkVal').textContent = (data.network_count || data.forks_count || 0).toLocaleString();
+
+  // Milestones
+  const mEl = document.getElementById('milestones');
+  mEl.innerHTML = milestones.map((m, i) => {
+    const reached = stars >= m.t;
+    const isNext = !reached && (i === 0 || stars >= milestones[i - 1].t);
+    const isLast = i === milestones.length - 1;
+    return `<div class="milestone">
+      <div class="milestone__track">
+        <div class="milestone__dot${reached ? ' reached' : ''}${isNext ? ' next' : ''}"></div>
+        ${!isLast ? `<div class="milestone__line${reached ? ' reached' : ''}"></div>` : ''}
+      </div>
+      <div class="milestone__body">
+        <div class="milestone__title${reached ? ' reached' : ''}${isNext ? ' next' : ''}">${m.l}${reached ? ' ✓' : ''}</div>
+        <div class="milestone__note${reached ? ' reached' : ''}${isNext ? ' next' : ''}">${m.n}</div>
+      </div>
+    </div>`;
+  }).join('');
+
+  // Last updated
+  document.getElementById('lastUpdated').textContent = 'Last updated: ' + new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+
+  // 100K celebration
+  if (stars >= TARGET) {
+    setTimeout(() => {
+      document.getElementById('toast').classList.add('active');
+      startConfetti();
+    }, 800);
+  }
+
+  // Pulse hero on refresh
+  document.getElementById('heroCard').classList.remove('pulse');
+  void document.getElementById('heroCard').offsetWidth;
+  document.getElementById('heroCard').classList.add('pulse');
+}
+
+// === FETCH ===
+let usedFallback = false;
+async function fetchData() {
+  try {
+    const res = await fetch(`https://api.github.com/repos/${REPO}`, {
+      headers: { 'Accept': 'application/vnd.github.v3+json' }
+    });
+    if (!res.ok) throw new Error(res.status);
+    const data = await res.json();
+    render(data);
+  } catch (e) {
+    if (!usedFallback) {
+      usedFallback = true;
+      render(FALLBACK);
+    }
+  }
+}
+
+// Init
+fetchData();
+setInterval(fetchData, 30000);
+</script>
+</body>
+</html>
